@@ -2,11 +2,7 @@
 
 This document explains **why** the Laravel SaaS Kit is built the way it is. It is deliberately
 opinionated: every section states the decision, the reasoning, and the trade-off or failure mode you
-accept by choosing it. For *what* the kit is and *how* to run it, see [README.md](README.md).
-
-> A note on honesty: where the code does not (yet) enforce something this document claims is
-> important, it says so explicitly and points at the real guard. Documentation that overstates the
-> safety net is worse than none.
+accept by choosing it. For _what_ the kit is and _how_ to run it, see [README.md](README.md).
 
 ---
 
@@ -115,7 +111,7 @@ trait BelongsToTenant
 
 **Why a global scope over per-query filtering.** The alternative — remembering to call
 `->where('tenant_id', $tenant)` on every query — fails the moment a developer forgets once, and that
-failure is invisible in code review because the *absence* of a line is what's wrong. A global scope
+failure is invisible in code review because the _absence_ of a line is what's wrong. A global scope
 inverts the default: isolation happens unless you explicitly opt out
 (`Model::withoutGlobalScope(TenantScope::class)`), which is a loud, greppable, reviewable act.
 
@@ -132,7 +128,7 @@ its table, and **fails analysis** if a model on a tenant table does not use `Bel
 Because PHPStan (Larastan, level 6) is a blocking CI gate, an unscoped tenant model can no longer be
 merged — the guarantee moved from "we wrote a test that exercises it" to "CI mechanically refuses to
 merge an unscoped tenant table." A model that legitimately carries `tenant_id` without being
-request-scoped opts out *explicitly* with the
+request-scoped opts out _explicitly_ with the
 [`#[NotTenantScoped]`](backend/app/Models/Attributes/NotTenantScoped.php) attribute and a stated
 reason (today only [`RefreshToken`](backend/app/Models/RefreshToken.php), whose lookup runs before
 any tenant context exists); pivots such as `TenantUser` are excluded as join tables. The opt-out is
@@ -142,7 +138,7 @@ schema, so it needs no database — the CI static-analysis job has none.)
 **The second guard is behavioural.** The
 [`TenantIsolationTest`](backend/tests/Feature/TenantIsolationTest.php) feature suite asserts from the
 outside that one tenant cannot see, read, mutate, or assign across the boundary. The static rule
-proves the trait is *present*; the test proves isolation actually *holds* at runtime against real
+proves the trait is _present_; the test proves isolation actually _holds_ at runtime against real
 queries (§2.10). They catch different classes of mistake, which is why both exist.
 
 ### 2.3 `TenantContext`: a request-scoped singleton as the single source of truth
@@ -163,10 +159,10 @@ DTO validation rules all read the tenant from this one place.
 **The long-running-worker trap, and how it's handled.** A singleton is per-container, and in
 long-lived processes (queue workers, Octane) the container can outlive a single request. The
 `JwtGuard` re-binds itself to the current request (`setRequest`) and clears its cached user/tenant on
-each resolution, so a tenant resolved for request *A* cannot bleed into request *B*. The deliberate
+each resolution, so a tenant resolved for request _A_ cannot bleed into request _B_. The deliberate
 design choice is that **`TenantContext` is empty by default** — outside an HTTP request (console,
 queues, seeders, tinker) `TenantScope` becomes a no-op rather than guessing a tenant. That is why
-cache invalidation (§2.7) takes the tenant id *explicitly* from the mutated model rather than reading
+cache invalidation (§2.7) takes the tenant id _explicitly_ from the mutated model rather than reading
 the context.
 
 ### 2.4 404, not 403, for cross-tenant resource access — but 403 at the door
@@ -190,7 +186,7 @@ if (! $user->belongsToTenant($tenantId)) {
 ```
 
 **404 — "that resource does not exist (for you)".** Once a valid member is inside their tenant, if
-they request a *resource id that belongs to another tenant*, they get `404`. They don't get `403`,
+they request a _resource id that belongs to another tenant_, they get `404`. They don't get `403`,
 because `403` would confirm the resource exists. The mechanism is elegant: the `TenantScope` has
 already filtered the row out of every query, so `Project::findOrFail($id)` simply finds nothing and
 404s — no explicit cross-tenant check is needed in the controller.
@@ -200,7 +196,7 @@ walking `/api/projects/1..N` learns which ids exist by reading status codes. Ret
 `404` for "doesn't exist" and "exists but isn't yours" closes that side channel — the responses are
 indistinguishable.
 
-**Trade-off.** A legitimate member who fat-fingers an id they *do* own also sees `404`. That's the
+**Trade-off.** A legitimate member who fat-fingers an id they _do_ own also sees `404`. That's the
 correct and acceptable cost: from the API's perspective, a resource you can't see is
 indistinguishable from one that isn't there, and that's exactly the property we want.
 
@@ -225,12 +221,12 @@ and [config/jwt.php](backend/config/jwt.php).
   database work for auth — it just verifies an HMAC signature. That's the whole point of a short TTL
   JWT.
 - **Stateful refresh = revocability.** The price of statelessness is that you can't revoke an access
-  token before it expires. Pairing it with a *stateful* refresh token gives you a revocation point
+  token before it expires. Pairing it with a _stateful_ refresh token gives you a revocation point
   (logout, theft response) without putting a DB hit on every request — only on the infrequent
   refresh.
 
 **Refresh-token theft detection (token families).** Every refresh token belongs to a `family_id`.
-On rotation the old token is revoked and a new one is issued *in the same family*. If a token that
+On rotation the old token is revoked and a new one is issued _in the same family_. If a token that
 was **already rotated** is presented again, that means two parties hold tokens from one lineage —
 i.e. one was stolen. The service treats reuse as theft and revokes the **entire family**, logging
 both the attacker and the victim out and forcing a fresh login:
@@ -251,7 +247,7 @@ Rotation runs inside a `lockForUpdate()` transaction so two concurrent refreshes
   expires. This is mitigated, not eliminated, by the 15-minute lifetime — short enough to bound
   exposure, long enough to avoid refreshing on every other request.
 - **The tenant is baked into the token (`tid`).** A user who belongs to multiple tenants holds a
-  token scoped to *one* of them; switching tenants means obtaining a new token for the other tenant.
+  token scoped to _one_ of them; switching tenants means obtaining a new token for the other tenant.
   This keeps the scope unambiguous (a request is always for exactly one tenant) at the cost of a
   re-issue on tenant switch.
 - **Symmetric signing (HS256).** Simpler than RS256 and fine for a single backend that both issues
@@ -275,11 +271,11 @@ all three jobs, and at low volume they don't meaningfully contend.
 
 **The operational implications you must understand.**
 
-- **Single point of failure.** If Redis is down, you lose caching *and* job processing *and*
+- **Single point of failure.** If Redis is down, you lose caching _and_ job processing _and_
   broadcasting simultaneously. The blast radius of one outage is three subsystems.
 - **Shared memory and eviction pressure.** Cache, queue, and pub/sub compete for the same memory.
   The dangerous interaction: an aggressive `maxmemory-policy` (e.g. `allkeys-lru`) chosen to keep the
-  *cache* healthy can evict **queued jobs**, silently dropping work. Cache data is disposable; queued
+  _cache_ healthy can evict **queued jobs**, silently dropping work. Cache data is disposable; queued
   jobs are not. Don't let one eviction policy govern both.
 - **`FLUSHDB`/`FLUSHALL` is a foot-gun.** "Clear the cache" can wipe pending jobs if they live in the
   same logical database. The kit mitigates this by putting cache on its own logical DB
@@ -310,7 +306,7 @@ another place a cross-tenant leak can happen. Keying entries as `t:{tid}:{resour
 guarantees tenant A can never read tenant B's cached payload, mirroring the database-level scope.
 
 **Why two tags per entry (broad + narrow).** Each entry is tagged with both `t:{tid}` (the whole
-tenant) and `t:{tid}:{resource}` (e.g. just projects). That lets a project mutation flush *only*
+tenant) and `t:{tid}:{resource}` (e.g. just projects). That lets a project mutation flush _only_
 project caches for that tenant — not the tenant's tasks, members, or everything else — while still
 allowing a full `flushTenant()` for offboarding.
 
@@ -339,7 +335,7 @@ artifact instead of a FormRequest plus an API Resource plus a hand-written array
 IDE-navigable, and analyzable by PHPStan.
 
 **Where it reinforces tenancy.** Validation rules can be tenant-aware. For example, a task's
-`assignee_id` is validated against `tenant_user` *scoped to the current tenant*, so you cannot assign
+`assignee_id` is validated against `tenant_user` _scoped to the current tenant_, so you cannot assign
 work to a user from another organization — the tenancy boundary is enforced at the validation layer,
 not just the query layer.
 
@@ -349,12 +345,12 @@ not just the query layer.
 ([app/Policies/](backend/app/Policies/)) with roles stored **on the membership pivot**, not on the
 user. The [`TenantRole`](backend/app/Enums/TenantRole.php) enum (Owner / Admin / Member) exposes
 `canManageTenant()`, and the [`ResolvesTenantRole`](backend/app/Policies/Concerns/ResolvesTenantRole.php)
-trait resolves the acting user's role *in the current tenant* from `TenantContext`.
+trait resolves the acting user's role _in the current tenant_ from `TenantContext`.
 
 **Why role-per-membership, not per-user.** A user can belong to multiple tenants with different
 standing — Owner of their own org, Member of a client's. A global `role` column can't express that.
 Storing the role on `tenant_user` makes "what can this user do?" a question that's only answerable
-*within a tenant*, which is exactly the real-world model.
+_within a tenant_.
 
 **The capability split.** Members can read and write domain data (projects, tasks); only Owners and
 Admins can manage the tenant (membership, destructive project deletes) via `canManageTenant()`. The
@@ -369,8 +365,8 @@ can never be orphaned without an administrator.
 - **Static analysis** (Larastan / PHPStan level 6).
 - **Code style** (Pint).
 
-**Why coverage *and* static analysis.** They catch different classes of bug. PHPStan proves the code
-is type-consistent and the wiring is sound; it cannot prove that *tenant isolation holds*, because
+**Why coverage _and_ static analysis.** They catch different classes of bug. PHPStan proves the code
+is type-consistent and the wiring is sound; it cannot prove that _tenant isolation holds_, because
 isolation is a runtime, data-dependent property. Only an end-to-end test that creates two tenants and
 tries to cross the line can assert that.
 
@@ -388,27 +384,26 @@ the tenancy model, this is the test that tells you whether you broke it.
 The kit optimizes for **operational simplicity at small-to-medium scale**. Each simplifying choice
 has a known graduation point:
 
-| Decision | Good while… | Outgrow it when… | Move to… |
-| --- | --- | --- | --- |
-| Row-level isolation (§2.1) | Tenants share manageable data volumes | A tenant demands physical isolation (compliance) or one tenant dwarfs the rest | Schema-per-tenant, or a dedicated DB for whales |
-| App-level tenant scoping (§2.2) | The Larastan rule + isolation tests cover every tenant table | You need isolation guaranteed below the application layer (compliance) | Postgres row-level security, or schema-per-tenant |
-| One Redis, three roles (§2.6) | Low queue + cache volume | Cache eviction threatens queued jobs, or one outage is too costly | Split Redis instances; separate eviction policies |
-| Plain `queue:work` (§2.6) | Few queues, simple jobs | You need supervision, autoscaling, and metrics | Laravel Horizon |
-| `tid` baked into the JWT (§2.5) | Users rarely switch tenants mid-session | Frequent tenant switching is a core UX | A tenant-switch endpoint that re-issues tokens |
+| Decision                        | Good while…                             | Outgrow it when…                                                               | Move to…                                           |
+| ------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------- |
+| Row-level isolation (§2.1)      | Tenants share manageable data volumes   | A tenant demands physical isolation (compliance) or one tenant dwarfs the rest | Schema-per-tenant, or a dedicated DB for whales    |
+| Test-only scope guard (§2.2)    | Team is small and disciplined           | New tenant tables are added frequently by many hands                           | A custom Larastan rule enforcing `BelongsToTenant` |
+| One Redis, three roles (§2.6)   | Low queue + cache volume                | Cache eviction threatens queued jobs, or one outage is too costly              | Split Redis instances; separate eviction policies  |
+| Plain `queue:work` (§2.6)       | Few queues, simple jobs                 | You need supervision, autoscaling, and metrics                                 | Laravel Horizon                                    |
+| `tid` baked into the JWT (§2.5) | Users rarely switch tenants mid-session | Frequent tenant switching is a core UX                                         | A tenant-switch endpoint that re-issues tokens     |
 
 ---
 
 ## 4. Security model summary
 
-| Layer | Mechanism | Enforced in |
-| --- | --- | --- |
-| Authentication | HS256 JWT access token, signature-verified, 15 min TTL | [JwtGuard.php](backend/app/Auth/JwtGuard.php), [TokenService.php](backend/app/Services/TokenService.php) |
-| Session continuity | Opaque refresh token, SHA-256 hashed at rest, rotated per use, family-based theft revocation | [TokenService.php](backend/app/Services/TokenService.php) |
-| Tenant entry (membership) | `403` if no `tid` or not a member | [ResolveTenant.php](backend/app/Http/Middleware/ResolveTenant.php) |
-| Tenant data scoping | Global `where tenant_id = ?` on every query; `404` on foreign resources | [TenantScope.php](backend/app/Models/Scopes/TenantScope.php), [BelongsToTenant.php](backend/app/Models/Concerns/BelongsToTenant.php) |
-| Write tagging | `tenant_id` stamped from context on create; body `tenant_id` ignored | [BelongsToTenant.php](backend/app/Models/Concerns/BelongsToTenant.php) |
-| Authorization | Role-per-membership policies; Owner/Admin vs Member; last-owner protection | [app/Policies/](backend/app/Policies/), [TenantRole.php](backend/app/Enums/TenantRole.php) |
-| Input validation | Tenant-scoped rules (e.g. assignee must be a tenant member) | [app/Data/](backend/app/Data/) |
-| Cache isolation | Tenant id embedded in every cache key and tag | [TenantCache.php](backend/app/Support/Cache/TenantCache.php) |
-| Scope-guard enforcement | `BelongsToTenant` required on every `tenant_id` table by a custom Larastan rule (blocks merge) | [EnforceBelongsToTenantRule.php](backend/app/PhpStan/Rules/EnforceBelongsToTenantRule.php), [NotTenantScoped.php](backend/app/Models/Attributes/NotTenantScoped.php) |
-| Regression guard | End-to-end isolation feature tests, 80% coverage gate, PHPStan, Pint | [TenantIsolationTest.php](backend/tests/Feature/TenantIsolationTest.php), [ci.yml](.github/workflows/ci.yml) |
+| Layer                     | Mechanism                                                                                    | Enforced in                                                                                                                          |
+| ------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Authentication            | HS256 JWT access token, signature-verified, 15 min TTL                                       | [JwtGuard.php](backend/app/Auth/JwtGuard.php), [TokenService.php](backend/app/Services/TokenService.php)                             |
+| Session continuity        | Opaque refresh token, SHA-256 hashed at rest, rotated per use, family-based theft revocation | [TokenService.php](backend/app/Services/TokenService.php)                                                                            |
+| Tenant entry (membership) | `403` if no `tid` or not a member                                                            | [ResolveTenant.php](backend/app/Http/Middleware/ResolveTenant.php)                                                                   |
+| Tenant data scoping       | Global `where tenant_id = ?` on every query; `404` on foreign resources                      | [TenantScope.php](backend/app/Models/Scopes/TenantScope.php), [BelongsToTenant.php](backend/app/Models/Concerns/BelongsToTenant.php) |
+| Write tagging             | `tenant_id` stamped from context on create; body `tenant_id` ignored                         | [BelongsToTenant.php](backend/app/Models/Concerns/BelongsToTenant.php)                                                               |
+| Authorization             | Role-per-membership policies; Owner/Admin vs Member; last-owner protection                   | [app/Policies/](backend/app/Policies/), [TenantRole.php](backend/app/Enums/TenantRole.php)                                           |
+| Input validation          | Tenant-scoped rules (e.g. assignee must be a tenant member)                                  | [app/Data/](backend/app/Data/)                                                                                                       |
+| Cache isolation           | Tenant id embedded in every cache key and tag                                                | [TenantCache.php](backend/app/Support/Cache/TenantCache.php)                                                                         |
+| Regression guard          | End-to-end isolation feature tests, 80% coverage gate, PHPStan, Pint                         | [TenantIsolationTest.php](backend/tests/Feature/TenantIsolationTest.php), [ci.yml](.github/workflows/ci.yml)                         |
