@@ -1,0 +1,16 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 6
+    paths:
+        - app
+
+services:
+    -
+        class: App\PhpStan\Rules\EnforceBelongsToTenantRule
+        tags:
+            - phpstan.rules.rule
+        arguments:
+            migrationsPath: %currentWorkingDirectory%/database/migrations
+

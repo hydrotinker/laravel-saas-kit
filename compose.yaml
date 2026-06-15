@@ -1,0 +1,79 @@
+services:
+  backend:
+    build: ./backend
+    user: "1000:1000"
+    image: laravel-saas-kit-php
+    restart: unless-stopped
+    volumes:
+      - ./backend:/var/www/html
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "9000:80"
+    volumes:
+      - ./backend:/var/www/html:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: backend
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d backend"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  queue:
+    build: ./backend
+    user: "1000:1000"
+    image: laravel-saas-kit-php
+    restart: unless-stopped
+    # Long-running Redis worker. --max-time/--max-jobs trigger periodic graceful
+    # restarts to bound memory growth; --timeout aligns with the redis queue
+    # retry_after (90s) so a running job is never retried while still in flight.
+    command: >
+      php artisan queue:work redis
+      --queue=default
+      --tries=3
+      --backoff=10
+      --max-time=3600
+      --max-jobs=1000
+      --timeout=90
+      --sleep=3
+    volumes:
+      - ./backend:/var/www/html
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:
